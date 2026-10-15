@@ -226,16 +226,23 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
 // SUPABASE CLIENT INITIALIZATION (Browser, Server, Admin)
 // ==============================================================================
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+import { sanitizeSupabaseUrl, sanitizeSupabaseKey } from './supabase/server';
+
+const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const rawAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 export const isSupabaseConfigured = Boolean(
-  supabaseUrl &&
-  supabaseUrl !== 'https://your-project.supabase.co' &&
-  supabaseAnonKey &&
-  supabaseAnonKey !== 'your-anon-key'
+  rawUrl &&
+  rawUrl.trim().length > 8 &&
+  rawUrl !== 'https://your-project.supabase.co' &&
+  rawAnonKey &&
+  rawAnonKey !== 'your-anon-key'
 );
+
+const supabaseUrl = sanitizeSupabaseUrl(rawUrl);
+const supabaseAnonKey = sanitizeSupabaseKey(rawAnonKey);
+const supabaseServiceRoleKey = sanitizeSupabaseKey(rawServiceKey, supabaseAnonKey);
 
 /**
  * Browser Supabase Client Singleton
@@ -245,23 +252,38 @@ let browserClient: SupabaseClient | null = null;
 export function getSupabaseBrowserClient(): SupabaseClient | null {
   if (!isSupabaseConfigured) return null;
   if (!browserClient) {
-    browserClient = createClient(supabaseUrl, supabaseAnonKey);
+    try {
+      browserClient = createClient(supabaseUrl, supabaseAnonKey);
+    } catch {
+      browserClient = null;
+    }
   }
   return browserClient;
 }
 
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : (null as unknown as SupabaseClient);
+export const supabase: SupabaseClient = (function () {
+  if (!isSupabaseConfigured) {
+    return null as unknown as SupabaseClient;
+  }
+  try {
+    return createClient(supabaseUrl, supabaseAnonKey);
+  } catch {
+    return null as unknown as SupabaseClient;
+  }
+})();
 
 /**
  * Server-side Supabase Client
  */
 export function createSupabaseServerClient(): SupabaseClient | null {
   if (!isSupabaseConfigured) return null;
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false },
-  });
+  try {
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false },
+    });
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -269,12 +291,14 @@ export function createSupabaseServerClient(): SupabaseClient | null {
  */
 export function createSupabaseAdminClient(): SupabaseClient | null {
   const serviceKey = supabaseServiceRoleKey || supabaseAnonKey;
-  if (!supabaseUrl || !serviceKey || supabaseUrl === 'https://your-project.supabase.co') {
+  if (!isSupabaseConfigured) return null;
+  try {
+    return createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  } catch {
     return null;
   }
-  return createClient(supabaseUrl, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
 }
 
 // ==============================================================================

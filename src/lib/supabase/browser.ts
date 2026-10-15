@@ -1,31 +1,46 @@
 /**
  * SUPABASE BROWSER CLIENT
  * Digunakan untuk pemanggilan Supabase dari sisi klien (React Client Components).
- * Menyediakan fallback offline yang mulus saat environment variables belum diset.
+ * Dilengkapi sanitasi URL otomatis dan fallback anti-crash saat build time di Vercel.
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { sanitizeSupabaseUrl, sanitizeSupabaseKey } from './server';
 
 let browserClient: SupabaseClient | null = null;
 
 export function createBrowserClient(): SupabaseClient {
   if (browserClient) return browserClient;
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project.supabase.co';
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+  const safeUrl = sanitizeSupabaseUrl(
+    typeof window !== 'undefined'
+      ? process.env.NEXT_PUBLIC_SUPABASE_URL
+      : (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+  );
+  const safeAnonKey = sanitizeSupabaseKey(
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    'placeholder-anon-key'
+  );
 
-  browserClient = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-    realtime: {
-      params: {
-        eventsPerSecond: 10,
+  try {
+    browserClient = createClient(safeUrl, safeAnonKey, {
+      auth: {
+        persistSession: typeof window !== 'undefined',
+        autoRefreshToken: typeof window !== 'undefined',
+        detectSessionInUrl: typeof window !== 'undefined',
       },
-    },
-  });
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+      },
+    });
+  } catch (e) {
+    console.warn('[Supabase Browser Fallback Client Active]:', e);
+    browserClient = createClient('https://placeholder-project.supabase.co', 'placeholder-anon-key', {
+      auth: { persistSession: false },
+    });
+  }
 
   return browserClient;
 }

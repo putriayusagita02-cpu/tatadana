@@ -2150,6 +2150,9 @@
         const activeId = getActiveUserId();
         if (activeId) loadUserSession(activeId);
         AppState.currentPage = 'admin';
+        syncUsersFromBackend().then(() => {
+          if (AppState.currentPage === 'admin') renderApp();
+        });
       } else if (route === 'pending-approval') {
         const activeId = getActiveUserId();
         if (activeId) loadUserSession(activeId);
@@ -3103,6 +3106,7 @@
     let pendingApprovalPollInterval = null;
     let adminUsersPollInterval = null;
 
+    let lastAdminUsersKey = '';
     function startAdminPolling() {
       if (adminUsersPollInterval) clearInterval(adminUsersPollInterval);
       adminUsersPollInterval = setInterval(async () => {
@@ -3112,9 +3116,10 @@
           return;
         }
         try {
-          const beforeCount = getRegisteredUsers().length;
           const updated = await syncUsersFromBackend();
-          if (updated && (updated.length !== beforeCount || AppState.currentPage === 'admin')) {
+          const key = (updated || []).map(u => u.id + ':' + (u.approvalStatus || u.status || '')).join(',');
+          if (key !== lastAdminUsersKey) {
+            lastAdminUsersKey = key;
             renderApp();
           }
         } catch (e) {}

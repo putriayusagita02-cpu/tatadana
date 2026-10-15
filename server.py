@@ -69,7 +69,97 @@ DEFAULT_USERS_DB = [
     }
 ]
 
-def load_registered_users():
+SUPABASE_CLOUD_URL = "https://qjcdgvnmuivxdyofecfy.supabase.co"
+SUPABASE_CLOUD_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqY2Rndm5tdWl2eGR5b2ZlY2Z5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MjA3Mjg0MSwiZXhwIjoyMTA3NjQ4ODQxfQ.eGm7YOsB8HMJ_8gG06gGLVtj16Vg_RGFc-Ayl-7fCdo"
+
+def fetch_cloud_profiles():
+    try:
+        url = f"{SUPABASE_CLOUD_URL}/rest/v1/profiles?select=*"
+        req = urllib.request.Request(url, headers={
+            'apikey': SUPABASE_CLOUD_KEY,
+            'Authorization': f'Bearer {SUPABASE_CLOUD_KEY}',
+            'Content-Type': 'application/json'
+        })
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            profiles = json.loads(resp.read().decode('utf-8'))
+            if isinstance(profiles, list):
+                return profiles
+    except Exception as e:
+        print(f"[Supabase Cloud Fetch Info]: {e}")
+    return []
+
+def update_cloud_profile_status(email, status, reason=None):
+    try:
+        if not email:
+            return False
+        url = f"{SUPABASE_CLOUD_URL}/rest/v1/profiles?email=eq.{urllib.parse.quote(email)}"
+        payload = {'status': status, 'updated_at': datetime.now(timezone.utc).isoformat()}
+        if reason:
+            payload['rejection_reason'] = reason
+        data_bytes = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data_bytes, method='PATCH', headers={
+            'apikey': SUPABASE_CLOUD_KEY,
+            'Authorization': f'Bearer {SUPABASE_CLOUD_KEY}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        })
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            return True
+    except Exception as e:
+        print(f"[Supabase Cloud Update Info]: {e}")
+        return False
+
+def sync_cloud_users():
+    cloud_profiles = fetch_cloud_profiles()
+    current_users = []
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, 'r', encoding='utf-8') as f:
+                current_users = json.load(f)
+        except Exception:
+            pass
+    if not isinstance(current_users, list) or len(current_users) == 0:
+        current_users = list(DEFAULT_USERS_DB)
+
+    user_map = {}
+    for u in current_users:
+        key = (u.get('email') or '').lower() or u.get('id')
+        if key:
+            user_map[key] = u
+
+    for p in cloud_profiles:
+        email = (p.get('email') or '').lower()
+        if not email:
+            continue
+        existing = user_map.get(email, {})
+        is_superadmin = (
+            email == 'putriayusagita02@gmail.com' or
+            p.get('is_superadmin') is True or
+            p.get('role') == 'superadmin'
+        )
+        merged = {
+            'id': p.get('id') or existing.get('id') or f"usr-{int(time.time()*1000)}",
+            'name': p.get('full_name') or existing.get('name') or email.split('@')[0],
+            'email': p.get('email'),
+            'phone': p.get('phone_number') or existing.get('phone') or '081234567890',
+            'password': existing.get('password') or 'password123',
+            'plan': p.get('subscription_plan') or existing.get('plan') or ('pro' if is_superadmin else 'starter'),
+            'monthlyTxCount': p.get('monthly_tx_count') or existing.get('monthlyTxCount') or 0,
+            'currency': p.get('default_currency') or existing.get('currency') or 'IDR',
+            'isSuperadmin': is_superadmin,
+            'approvalStatus': p.get('status') or existing.get('approvalStatus') or ('approved' if is_superadmin else 'pending'),
+            'registeredAt': p.get('created_at') or existing.get('registeredAt') or '15 Okt 2026',
+            'avatarUrl': p.get('avatar_url') or existing.get('avatarUrl') or f"https://api.dicebear.com/7.x/initials/svg?seed={email}&backgroundColor=f43f5e"
+        }
+        user_map[email] = merged
+
+    final_users = list(user_map.values())
+    save_registered_users(final_users)
+    return final_users
+
+def load_registered_users(force_cloud_sync=False):
+    if force_cloud_sync:
+        return sync_cloud_users()
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE, 'r', encoding='utf-8') as f:
@@ -80,8 +170,7 @@ def load_registered_users():
                     return data
         except Exception as e:
             print(f"[Error reading users db]: {e}")
-    save_registered_users(DEFAULT_USERS_DB)
-    return list(DEFAULT_USERS_DB)
+    return sync_cloud_users()
 
 def save_registered_users(users):
     try:
@@ -639,10 +728,11 @@ def telegram_polling_thread_func():
                             print(f"[Telegram Poller] Error handling callback: {cb_err}")
             else:
                 consecutive_errors += 1
-                err_desc = updates_res.get('description', '')
                 if 'conflict' in err_desc.lower() or 'webhook is active' in err_desc.lower():
-                    print("[Telegram Poller] Webhook konflik terdeteksi, membersihkan webhook via deleteWebhook...")
-                    TelegramBotAPI.delete_webhook(token)
+                    if consecutive_errors == 1:
+                        print("[Telegram Poller] Webhook konflik terdeteksi, membersihkan webhook via deleteWebhook...")
+                        TelegramBotAPI.delete_webhook(token)
+                    time.sleep(5)
                 if consecutive_errors % 10 == 0:
                     print(f"[Telegram Poller] Telegram API status info: {err_desc}")
                 time.sleep(2)
@@ -680,6 +770,15 @@ class TataDanaHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Bot-Api-Secret-Token")
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         super().end_headers()
+
+    def send_json(self, data, status=200):
+        body = json.dumps(data, ensure_ascii=False).encode('utf-8')
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -1118,23 +1217,22 @@ class TataDanaHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 body = json.loads(post_data.decode('utf-8'))
                 user_id = body.get('userId')
+                email = body.get('email')
                 users = load_registered_users()
                 target_user = None
                 for u in users:
-                    if u.get('id') == user_id:
+                    if u.get('id') == user_id or (email and u.get('email', '').lower() == email.lower()):
                         u['approvalStatus'] = 'approved'
                         target_user = u
+                        if not email:
+                            email = u.get('email')
                         break
                 save_registered_users(users)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'ok': True, 'approvalStatus': 'approved', 'user': target_user}).encode('utf-8'))
+                if email:
+                    update_cloud_profile_status(email, 'approved')
+                self.send_json({'ok': True, 'approvalStatus': 'approved', 'user': target_user})
             except Exception as e:
-                self.send_response(500)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'ok': False, 'message': str(e)}).encode('utf-8'))
+                self.send_json({'ok': False, 'message': str(e)}, status=500)
             return
 
         # 10. Endpoint: /api/users/reject
@@ -1144,23 +1242,23 @@ class TataDanaHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 body = json.loads(post_data.decode('utf-8'))
                 user_id = body.get('userId')
+                email = body.get('email')
+                reason = body.get('reason', 'Data tidak sesuai')
                 users = load_registered_users()
                 target_user = None
                 for u in users:
-                    if u.get('id') == user_id:
+                    if u.get('id') == user_id or (email and u.get('email', '').lower() == email.lower()):
                         u['approvalStatus'] = 'rejected'
                         target_user = u
+                        if not email:
+                            email = u.get('email')
                         break
                 save_registered_users(users)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'ok': True, 'approvalStatus': 'rejected', 'user': target_user}).encode('utf-8'))
+                if email:
+                    update_cloud_profile_status(email, 'rejected', reason)
+                self.send_json({'ok': True, 'approvalStatus': 'rejected', 'user': target_user})
             except Exception as e:
-                self.send_response(500)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'ok': False, 'message': str(e)}).encode('utf-8'))
+                self.send_json({'ok': False, 'message': str(e)}, status=500)
             return
 
         # 11. Endpoint: /api/users/sync
@@ -1200,11 +1298,8 @@ class TataDanaHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         # API: /api/users
         if self.path == '/api/users':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            users = load_registered_users()
-            self.wfile.write(json.dumps({'ok': True, 'users': users}).encode('utf-8'))
+            users = load_registered_users(force_cloud_sync=True)
+            self.send_json({'ok': True, 'users': users})
             return
 
         # API: /api/users/status?id=...
@@ -1329,14 +1424,17 @@ class TataDanaHandler(http.server.SimpleHTTPRequestHandler):
         if clean_path in spa_routes or clean_path == '':
             index_path = os.path.join(PUBLIC_DIR, 'index.html')
             if os.path.exists(index_path):
+                with open(index_path, 'rb') as f:
+                    html_bytes = f.read()
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(html_bytes)))
                 self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
                 self.send_header('Pragma', 'no-cache')
                 self.send_header('Expires', '0')
+                self.send_header('Connection', 'close')
                 self.end_headers()
-                with open(index_path, 'rb') as f:
-                    self.wfile.write(f.read())
+                self.wfile.write(html_bytes)
                 return
 
         # Default static file handler
@@ -1368,15 +1466,8 @@ def run_server():
         print(f"[Auto-Resume] Memulihkan integrasi bot: @{bot_info.get('username')}")
         start_telegram_poller(token, bot_info)
 
-    httpd = DualStackThreadingServer(('127.0.0.1', PORT), TataDanaHandler)
-    print(f"[IPv4 Socket] Siap melayani koneksi di 127.0.0.1:{PORT}")
-
-    try:
-        httpd_v6 = ThreadingServerV6(('::1', PORT), TataDanaHandler)
-        threading.Thread(target=httpd_v6.serve_forever, daemon=True).start()
-        print(f"[IPv6 Socket] Siap melayani koneksi di [::1]:{PORT} (http://localhost:{PORT})")
-    except Exception as e:
-        print(f"[IPv6 Socket Info]: {e}")
+    httpd = DualStackThreadingServer(('0.0.0.0', PORT), TataDanaHandler)
+    print(f"[HTTP Socket] Siap melayani koneksi di 0.0.0.0:{PORT} (http://localhost:{PORT})")
 
     with httpd:
         print("=" * 70)

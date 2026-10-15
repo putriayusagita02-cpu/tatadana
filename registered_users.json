@@ -14,7 +14,7 @@
     "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
   },
   {
-    "id": "usr-admin-01",
+    "id": "814ae2ce-fc45-4042-90a3-73c635fc1f17",
     "name": "Putri Ayu Sagita",
     "email": "putriayusagita02@gmail.com",
     "phone": "081299990001",
@@ -24,7 +24,35 @@
     "currency": "IDR",
     "isSuperadmin": true,
     "approvalStatus": "approved",
-    "registeredAt": "01 Okt 2026, 08:00 WIB",
+    "registeredAt": "2026-10-16T00:19:47.986811+00:00",
     "avatarUrl": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150"
+  },
+  {
+    "id": "a6f22233-66db-4904-8b21-7abd7b2d73e2",
+    "name": "Dosen Penguji",
+    "email": "dosen.penguji@tatadana.id",
+    "phone": "08123456789",
+    "password": "password123",
+    "plan": "starter",
+    "monthlyTxCount": 0,
+    "currency": "IDR",
+    "isSuperadmin": false,
+    "approvalStatus": "pending",
+    "registeredAt": "2026-10-16T00:46:18.401398+00:00",
+    "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=dosen.penguji@tatadana.id&backgroundColor=f43f5e"
+  },
+  {
+    "id": "25cb866b-67cd-4c70-a07c-a0e8672515eb",
+    "name": "Raisa",
+    "email": "raisa@gmail.com",
+    "phone": "08580022250",
+    "password": "password123",
+    "plan": "starter",
+    "monthlyTxCount": 0,
+    "currency": "IDR",
+    "isSuperadmin": false,
+    "approvalStatus": "approved",
+    "registeredAt": "2026-10-16T00:40:14.832127+00:00",
+    "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=raisa@gmail.com&backgroundColor=f43f5e"
   }
 ]

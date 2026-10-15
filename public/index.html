@@ -1596,6 +1596,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newUser)
         }).catch(() => {});
+        fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newUser)
+        }).catch(() => {});
       } catch (e) {}
 
       // Auto login as new user & navigate to pending approval page
@@ -1951,6 +1956,9 @@
         const activeId = getActiveUserId();
         if (activeId) loadUserSession(activeId);
         AppState.currentPage = 'admin';
+        syncUsersFromBackend().then(() => {
+          if (AppState.currentPage === 'admin') renderApp();
+        });
       } else if (clean === 'pending-approval') {
         const activeId = getActiveUserId();
         if (activeId) loadUserSession(activeId);
@@ -2828,6 +2836,37 @@
     // 2B. MENUNGGU PERSETUJUAN ADMIN (PENDING APPROVAL PAGE & POLLING)
     // =========================================================================
     let pendingApprovalPollInterval = null;
+    let adminUsersPollInterval = null;
+
+    function startAdminPolling() {
+      if (adminUsersPollInterval) clearInterval(adminUsersPollInterval);
+      adminUsersPollInterval = setInterval(async () => {
+        if (AppState.currentPage !== 'admin') {
+          clearInterval(adminUsersPollInterval);
+          adminUsersPollInterval = null;
+          return;
+        }
+        try {
+          const res = await fetch('/api/users');
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.ok && Array.isArray(data.users)) {
+              const currentLocal = getRegisteredUsers();
+              const map = new Map();
+              data.users.forEach(u => map.set(u.id, u));
+              currentLocal.forEach(u => {
+                if (!map.has(u.id)) map.set(u.id, u);
+              });
+              const merged = Array.from(map.values());
+              if (merged.length !== currentLocal.length) {
+                localStorage.setItem('tatadana_registered_users', JSON.stringify(merged));
+                renderApp();
+              }
+            }
+          }
+        } catch (e) {}
+      }, 3000);
+    }
 
     function startPendingApprovalPolling() {
       if (pendingApprovalPollInterval) clearInterval(pendingApprovalPollInterval);
@@ -5208,6 +5247,7 @@
       if (!AppState.user || !AppState.user.isSuperadmin) {
         return renderAdminLoginPage();
       }
+      startAdminPolling();
       return `
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-rose-100">

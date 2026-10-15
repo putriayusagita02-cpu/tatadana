@@ -1,0 +1,13 @@
+[
+  {
+    "id": "tx-1792078300332",
+    "date": "Kamis, 15 Oktober 2026 \u2014 22:31 WIB",
+    "dayNum": 15,
+    "type": "income",
+    "amount": 100000000,
+    "category": "\ud83d\udcbc Gaji Bulanan",
+    "wallet": "BCA Utama",
+    "notes": "gajian 100 jt",
+    "source": "telegram"
+  }
+]

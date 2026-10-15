@@ -1,0 +1,20 @@
+{
+  "token": "8725228830:AAF_56hbKIHdFIO7dWEEBaFo8dsFn5zoqDc",
+  "bot_info": {
+    "id": 8725228830,
+    "is_bot": true,
+    "first_name": "TataDana_Pasgta_Bot",
+    "username": "PasgtaBot",
+    "can_join_groups": true,
+    "can_read_all_group_messages": false,
+    "supports_inline_queries": false,
+    "supports_guest_queries": false,
+    "can_connect_to_business": false,
+    "has_main_web_app": false,
+    "has_topics_enabled": false,
+    "allows_users_to_create_topics": false,
+    "can_manage_bots": false,
+    "supports_join_request_queries": false
+  },
+  "updated_at": 1792077642.858517
+}

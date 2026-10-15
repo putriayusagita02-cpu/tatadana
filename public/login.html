@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>TataDana — Masuk</title>
+  <script>
+    try {
+      localStorage.removeItem('tatadana_active_user_id');
+    } catch (e) {}
+    window.location.replace('/login');
+  </script>
+</head>
+<body style="font-family: sans-serif; padding: 2rem; text-align: center; background: #f8fafc; color: #1e293b;">
+  <h2>Membuka Halaman Login TataDana...</h2>
+  <p><a href="/login" style="color: #f43f5e; font-weight: bold;">Klik di sini jika halaman tidak beralih otomatis</a></p>
+</body>
+</html>

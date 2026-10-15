@@ -1,33 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getSharedUsers, saveSharedUser } from '@/lib/user-store';
 
 export const dynamic = 'force-dynamic';
-
-// In-memory fallback
-let memoryUsers: any[] = [
-  {
-    id: 'usr-001',
-    name: 'Dimas Kurniawan',
-    email: 'dimas@tatadana.id',
-    phone: '081234567890',
-    plan: 'pro',
-    status: 'approved',
-    joinedAt: '01 Okt 2026',
-    isSuperadmin: false,
-    approvalStatus: 'approved',
-  },
-  {
-    id: 'usr-admin-01',
-    name: 'Putri Ayu Sagita',
-    email: 'putriayusagita02@gmail.com',
-    phone: '081299990001',
-    plan: 'pro',
-    status: 'approved',
-    joinedAt: '01 Okt 2026',
-    isSuperadmin: true,
-    approvalStatus: 'approved',
-  },
-];
 
 export async function GET(req: NextRequest) {
   try {
@@ -48,36 +23,23 @@ export async function GET(req: NextRequest) {
           approvalStatus: p.status || 'pending',
           rejectionReason: p.rejection_reason || '',
           joinedAt: p.created_at || 'Hari ini',
+          registeredAt: p.created_at || 'Hari ini',
           isSuperadmin: p.role === 'superadmin' || p.is_superadmin || p.email === 'putriayusagita02@gmail.com',
         }));
         return NextResponse.json({ ok: true, users: mapped });
       }
     }
   } catch (e) {
-    // Fallback to memoryUsers
+    // Fallback to shared in-memory users
   }
 
-  return NextResponse.json({ ok: true, users: memoryUsers });
+  return NextResponse.json({ ok: true, users: getSharedUsers() });
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, email, phone } = body;
-
-    const newUser = {
-      id: `usr-${Date.now()}`,
-      name: name || 'Pengguna Baru',
-      email: (email || '').toLowerCase(),
-      phone: phone || '',
-      plan: 'starter',
-      status: 'pending',
-      approvalStatus: 'pending',
-      joinedAt: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-      isSuperadmin: false,
-    };
-
-    memoryUsers.unshift(newUser);
+    const newUser = saveSharedUser(body);
 
     if (supabaseAdmin) {
       try {
@@ -86,8 +48,8 @@ export async function POST(req: NextRequest) {
           full_name: newUser.name,
           email: newUser.email,
           phone_number: newUser.phone,
-          status: 'pending',
-          subscription_plan: 'starter',
+          status: newUser.status || 'pending',
+          subscription_plan: newUser.plan || 'starter',
         });
       } catch (e) {
         console.warn('Supabase profile insert fallback:', e);

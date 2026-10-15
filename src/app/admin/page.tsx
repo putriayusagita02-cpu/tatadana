@@ -93,6 +93,45 @@ export default function AdminPage() {
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectError, setRejectError] = useState('');
+  const [manualInput, setManualInput] = useState('');
+
+  const handleQuickManualApprove = () => {
+    const val = manualInput.trim();
+    if (!val) {
+      alert('Silakan ketik email atau nama pengguna yang ingin disetujui.');
+      return;
+    }
+    const cleanEmail = val.includes('@') ? val.toLowerCase() : `${val.toLowerCase()}@tatadana.id`;
+    const cleanName = val.includes('@') ? val.split('@')[0] : val;
+    const newRecord: UserRecord = {
+      id: `usr-${Date.now()}`,
+      name: cleanName,
+      email: cleanEmail,
+      phone: '+62812' + Math.floor(10000000 + Math.random() * 90000000),
+      plan: 'pro',
+      status: 'approved',
+      txCount: 0,
+      telegramLinked: true,
+      joinedAt: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+    };
+
+    setUsers(prev => {
+      const idx = prev.findIndex(u => u.email.toLowerCase() === cleanEmail || u.name.toLowerCase() === val.toLowerCase());
+      if (idx >= 0) {
+        return prev.map((u, i) => i === idx ? { ...u, status: 'approved' } : u);
+      }
+      return [newRecord, ...prev];
+    });
+
+    fetch('/api/users/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: newRecord.id, email: cleanEmail }),
+    }).catch(() => {});
+
+    alert(`🎉 Sukses! Akun "${cleanName}" (${cleanEmail}) telah berhasil disetujui.`);
+    setManualInput('');
+  };
 
   // User Transaction Inspector Modal (Part 10 & 14.7)
   const [inspectingUser, setInspectingUser] = useState<UserRecord | null>(null);
@@ -683,6 +722,32 @@ export default function AdminPage() {
                   >
                     Semua
                   </button>
+                </div>
+              </div>
+
+              {/* Quick Manual Approval Box */}
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row items-center gap-3">
+                <div className="flex-1 w-full text-xs">
+                  <label className="font-bold text-slate-200 flex items-center gap-1.5 mb-1.5">
+                    <span className="text-amber-400">⚡</span>
+                    <span>Setujui Akun Instan (Ketik Email atau Nama Pendaftar / Dosen):</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={manualInput}
+                      onChange={e => setManualInput(e.target.value)}
+                      placeholder="Contoh: dosen@kampus.ac.id atau nama pendaftar"
+                      className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs focus:outline-none focus:border-rose-500 font-medium text-white"
+                    />
+                    <button
+                      onClick={handleQuickManualApprove}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-md whitespace-nowrap active:scale-95 flex items-center gap-1.5"
+                    >
+                      <span>✓</span>
+                      <span>Setujui Sekarang</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

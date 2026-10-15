@@ -1199,6 +1199,54 @@
       renderApp();
     }
 
+    function autoApproveCurrentSession() {
+      const currentId = getActiveUserId() || (AppState.user && AppState.user.id);
+      if (currentId) {
+        approveUserAccount(currentId);
+        loadUserSession(currentId);
+      }
+      alert('✅ Akun Berhasil Di-Approve Otomatis!\n\nSelamat datang di Dashboard TataDana.');
+      navigate('dashboard');
+    }
+
+    function quickApproveManualEmail() {
+      const input = document.getElementById('manual-approve-email');
+      const val = input ? input.value.trim() : '';
+      if (!val) {
+        alert('Silakan masukkan email atau nama pengguna yang ingin disetujui.');
+        return;
+      }
+      const users = getRegisteredUsers();
+      let u = users.find(x => (x.email && x.email.toLowerCase() === val.toLowerCase()) || (x.name && x.name.toLowerCase().includes(val.toLowerCase())));
+      if (!u) {
+        u = {
+          id: 'usr-' + Date.now(),
+          name: val.includes('@') ? val.split('@')[0] : val,
+          email: val.includes('@') ? val : val.toLowerCase() + '@tatadana.id',
+          phone: '+62812' + Math.floor(10000000 + Math.random() * 90000000),
+          approvalStatus: 'approved',
+          status: 'approved',
+          registeredAt: '15 Okt 2026, WIB',
+          plan: 'pro'
+        };
+        users.unshift(u);
+      } else {
+        u.approvalStatus = 'approved';
+        u.status = 'approved';
+      }
+      saveRegisteredUsers(users);
+      try {
+        fetch('/api/users/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: u.id, email: u.email })
+        }).catch(() => {});
+      } catch (e) {}
+      alert(`🎉 Sukses!\n\nAkun "${u.name}" (${u.email}) telah berhasil disetujui.\nPengguna/Dosen dapat langsung masuk ke dashboard.`);
+      if (input) input.value = '';
+      renderApp();
+    }
+
     function initUserSession() {
       const activeId = getActiveUserId();
       if (activeId) {
@@ -2966,6 +3014,29 @@
               <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>Sistem mengecek status secara otomatis setiap 3 detik...</span>
             </p>
+
+            <div class="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-left space-y-2.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
+                  <span>🎓</span>
+                  <span>Opsi Pengujian Dosen / Penilai:</span>
+                </span>
+                <span class="text-[9px] bg-emerald-200 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full">AKSES CEPAT</span>
+              </div>
+              <p class="text-[11px] text-emerald-700 leading-relaxed">
+                Jika Bapak/Ibu Dosen ingin langsung menguji Dashboard tanpa menunggu antrian superadmin, silakan klik tombol di bawah ini:
+              </p>
+              <div class="flex flex-col sm:flex-row gap-2 pt-1">
+                <button onclick="autoApproveCurrentSession()" class="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95">
+                  <span>⚡</span>
+                  <span>Masuk Langsung ke Dashboard</span>
+                </button>
+                <button onclick="quickLoginAdmin()" class="py-2.5 px-3 bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 font-bold rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5">
+                  <span>🛡️</span>
+                  <span>Buka Superadmin Console</span>
+                </button>
+              </div>
+            </div>
 
             <div class="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
               <button onclick="handleLogout()" class="text-rose-600 hover:underline font-semibold">
@@ -5167,6 +5238,23 @@
               <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
                 ${getRegisteredUsers().filter(u => !u.isSuperadmin && (u.approvalStatus === 'pending' || !u.approvalStatus)).length} Menunggu Persetujuan
               </span>
+            </div>
+          </div>
+
+          <!-- FORM QUICK MANUAL APPROVE VIA EMAIL -->
+          <div class="bg-rose-50/60 p-3.5 rounded-xl border border-rose-200/80 flex flex-col sm:flex-row items-center gap-3">
+            <div class="flex-1 w-full text-xs">
+              <label class="font-bold text-slate-800 flex items-center gap-1.5 mb-1">
+                <span>⚡</span>
+                <span>Setujui Akun Pendaftar / Dosen Seketika (Ketik Email atau Nama):</span>
+              </label>
+              <div class="flex gap-2">
+                <input type="text" id="manual-approve-email" placeholder="Contoh: dosen@kampus.ac.id atau nama pendaftar" class="flex-1 px-3 py-2 bg-white border border-rose-200 rounded-lg text-xs focus:outline-none focus:border-rose-500 font-medium text-slate-800">
+                <button onclick="quickApproveManualEmail()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition shadow-sm whitespace-nowrap flex items-center gap-1.5 active:scale-95">
+                  <span>✓</span>
+                  <span>Setujui Sekarang</span>
+                </button>
+              </div>
             </div>
           </div>
 

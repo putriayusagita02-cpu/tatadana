@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { updateSharedUserStatus } from '@/lib/user-store';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, reason } = await req.json();
-    if (!userId) {
-      return NextResponse.json({ ok: false, message: 'userId wajib disertakan.' }, { status: 400 });
+    const body = await req.json();
+    const identifier = body.userId || body.email || body.id;
+    const reason = body.reason || 'Ditolak oleh Superadmin';
+
+    if (!identifier) {
+      return NextResponse.json({ ok: false, message: 'userId atau email wajib disertakan.' }, { status: 400 });
     }
+
+    const updated = updateSharedUserStatus(identifier, 'rejected', reason);
 
     if (supabaseAdmin) {
       try {
@@ -16,15 +22,20 @@ export async function POST(req: NextRequest) {
           .from('profiles')
           .update({
             status: 'rejected',
-            rejection_reason: reason || 'Ditolak oleh Superadmin',
+            rejection_reason: reason,
           })
-          .eq('id', userId);
+          .or(`id.eq.${identifier},email.eq.${identifier}`);
       } catch (e) {
         console.warn('Supabase reject status fallback:', e);
       }
     }
 
-    return NextResponse.json({ ok: true, message: 'Akun ditolak.', userId, status: 'rejected' });
+    return NextResponse.json({
+      ok: true,
+      message: 'Akun ditolak.',
+      user: updated,
+      status: 'rejected',
+    });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }

@@ -6,13 +6,17 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+export const CLOUD_SUPABASE_URL = 'https://qjcdgvnmuivxdyofecfy.supabase.co';
+export const CLOUD_SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqY2Rndm5tdWl2eGR5b2ZlY2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNzI4NDEsImV4cCI6MjEwNzY0ODg0MX0.bLn7oSac9loh9q62kPGh2TtLLrzbq5wYNlOV1WjQglg';
+export const CLOUD_SUPABASE_SERVICE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqY2Rndm5tdWl2eGR5b2ZlY2Z5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MjA3Mjg0MSwiZXhwIjoyMTA3NjQ4ODQxfQ.eGm7YOsB8HMJ_8gG06gGLVtj16Vg_RGFc-Ayl-7fCdo';
+
 export function sanitizeSupabaseUrl(rawUrl?: string): string {
   if (!rawUrl || typeof rawUrl !== 'string') {
-    return 'https://placeholder-project.supabase.co';
+    return CLOUD_SUPABASE_URL;
   }
   let clean = rawUrl.trim();
-  if (!clean || clean === 'your-project.supabase.co') {
-    return 'https://placeholder-project.supabase.co';
+  if (!clean || clean === 'your-project.supabase.co' || clean === 'https://placeholder-project.supabase.co') {
+    return CLOUD_SUPABASE_URL;
   }
   if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
     clean = `https://${clean}`;
@@ -21,14 +25,15 @@ export function sanitizeSupabaseUrl(rawUrl?: string): string {
     const parsed = new URL(clean);
     return parsed.origin;
   } catch {
-    return 'https://placeholder-project.supabase.co';
+    return CLOUD_SUPABASE_URL;
   }
 }
 
-export function sanitizeSupabaseKey(rawKey?: string, fallback = 'placeholder-anon-key'): string {
+export function sanitizeSupabaseKey(rawKey?: string, fallback = CLOUD_SUPABASE_ANON): string {
   if (!rawKey || typeof rawKey !== 'string') return fallback;
   const clean = rawKey.trim();
-  return clean || fallback;
+  if (!clean || clean === 'your-anon-key' || clean === 'placeholder-anon-key') return fallback;
+  return clean;
 }
 
 let serverAdminClient: SupabaseClient | null = null;

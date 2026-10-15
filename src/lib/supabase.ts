@@ -235,7 +235,9 @@ const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 export const isSupabaseConfigured = Boolean(
   rawUrl &&
   rawUrl.trim().length > 8 &&
-  rawUrl !== 'https://your-project.supabase.co' &&
+  !rawUrl.includes('your-project') &&
+  !rawUrl.includes('sb_publishable') &&
+  rawUrl.includes('.supabase.co') &&
   rawAnonKey &&
   rawAnonKey !== 'your-anon-key'
 );
@@ -250,7 +252,6 @@ const supabaseServiceRoleKey = sanitizeSupabaseKey(rawServiceKey, supabaseAnonKe
 let browserClient: SupabaseClient | null = null;
 
 export function getSupabaseBrowserClient(): SupabaseClient | null {
-  if (!isSupabaseConfigured) return null;
   if (!browserClient) {
     try {
       browserClient = createClient(supabaseUrl, supabaseAnonKey);
@@ -262,9 +263,6 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
 }
 
 export const supabase: SupabaseClient = (function () {
-  if (!isSupabaseConfigured) {
-    return null as unknown as SupabaseClient;
-  }
   try {
     return createClient(supabaseUrl, supabaseAnonKey);
   } catch {

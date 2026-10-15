@@ -15,7 +15,13 @@ export function sanitizeSupabaseUrl(rawUrl?: string): string {
     return CLOUD_SUPABASE_URL;
   }
   let clean = rawUrl.trim();
-  if (!clean || clean === 'your-project.supabase.co' || clean === 'https://placeholder-project.supabase.co') {
+  if (
+    !clean ||
+    clean.includes('sb_publishable') ||
+    clean.includes('your-project') ||
+    clean.includes('placeholder') ||
+    !clean.includes('.supabase.co')
+  ) {
     return CLOUD_SUPABASE_URL;
   }
   if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
@@ -23,6 +29,9 @@ export function sanitizeSupabaseUrl(rawUrl?: string): string {
   }
   try {
     const parsed = new URL(clean);
+    if (!parsed.hostname || !parsed.hostname.includes('.supabase.co')) {
+      return CLOUD_SUPABASE_URL;
+    }
     return parsed.origin;
   } catch {
     return CLOUD_SUPABASE_URL;

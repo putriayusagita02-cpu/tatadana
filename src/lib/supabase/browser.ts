@@ -5,7 +5,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { sanitizeSupabaseUrl, sanitizeSupabaseKey } from './server';
+import { sanitizeSupabaseUrl, sanitizeSupabaseKey, CLOUD_SUPABASE_URL, CLOUD_SUPABASE_ANON } from './server';
 
 let browserClient: SupabaseClient | null = null;
 
@@ -37,7 +37,7 @@ export function createBrowserClient(): SupabaseClient {
     });
   } catch (e) {
     console.warn('[Supabase Browser Fallback Client Active]:', e);
-    browserClient = createClient('https://placeholder-project.supabase.co', 'placeholder-anon-key', {
+    browserClient = createClient(CLOUD_SUPABASE_URL, CLOUD_SUPABASE_ANON, {
       auth: { persistSession: false },
     });
   }

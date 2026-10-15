@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 // In-memory runtime state for providers (and Supabase sync)
 let aiSettings = {
   mode: 'parallel_failover' as 'single' | 'parallel_failover',

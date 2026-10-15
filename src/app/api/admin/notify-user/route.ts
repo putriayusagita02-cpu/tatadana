@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 import { sendTelegramMessage } from '@/lib/telegram-bot';
 
 export async function POST(req: NextRequest) {

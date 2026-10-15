@@ -1,5 +1,16 @@
 [
   {
+    "id": "tx-1792080198212",
+    "date": "Kamis, 15 Oktober 2026 \u2014 23:03 WIB",
+    "dayNum": 15,
+    "type": "expense",
+    "amount": 200000,
+    "category": "\ud83c\udf5c Makanan & Minuman",
+    "wallet": "BCA Utama",
+    "notes": "beli ayam 200 rb",
+    "source": "telegram"
+  },
+  {
     "id": "tx-1792078300332",
     "date": "Kamis, 15 Oktober 2026 \u2014 22:31 WIB",
     "dayNum": 15,

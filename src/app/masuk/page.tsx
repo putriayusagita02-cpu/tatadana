@@ -1,2 +1,5 @@
-import LoginPage from '../login/page';
-export default LoginPage;
+import { redirect } from 'next/navigation';
+
+export default function MasukPage() {
+  redirect('/login');
+}

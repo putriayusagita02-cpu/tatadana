@@ -1,2 +1,5 @@
-import RegisterPage from '../register/page';
-export default RegisterPage;
+import { redirect } from 'next/navigation';
+
+export default function DaftarPage() {
+  redirect('/register');
+}

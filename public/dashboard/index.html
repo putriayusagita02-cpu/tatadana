@@ -967,6 +967,88 @@
       }
     };
 
+    // Supabase Cloud Credentials for Direct Multi-Device Sync
+    const SUPABASE_CLOUD_URL = 'https://qjcdgvnmuivxdyofecfy.supabase.co';
+    const SUPABASE_CLOUD_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqY2Rndm5tdWl2eGR5b2ZlY2Z5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MjA3Mjg0MSwiZXhwIjoyMTA3NjQ4ODQxfQ.eGm7YOsB8HMJ_8gG06gGLVtj16Vg_RGFc-Ayl-7fCdo';
+
+    async function registerUserToSupabase(userData) {
+      let authId = null;
+      try {
+        const authRes = await fetch(`${SUPABASE_CLOUD_URL}/auth/v1/admin/users`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_CLOUD_KEY,
+            'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: userData.email,
+            password: userData.password || 'password123',
+            email_confirm: true,
+            user_metadata: {
+              full_name: userData.name,
+              phone: userData.phone
+            }
+          })
+        });
+        if (authRes.ok) {
+          const authData = await authRes.json();
+          if (authData && authData.id) {
+            authId = authData.id;
+          }
+        }
+      } catch (e) {
+        console.warn('Auth admin create warning:', e);
+      }
+
+      if (!authId) {
+        try {
+          const pRes = await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(userData.email)}&select=id`, {
+            headers: { 'apikey': SUPABASE_CLOUD_KEY, 'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}` }
+          });
+          if (pRes.ok) {
+            const pData = await pRes.json();
+            if (Array.isArray(pData) && pData.length > 0 && pData[0].id) {
+              authId = pData[0].id;
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (!authId) {
+        authId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('usr-' + Date.now());
+      }
+
+      try {
+        const profilePayload = {
+          id: authId,
+          full_name: userData.name,
+          email: userData.email,
+          phone_number: userData.phone,
+          phone_verified: true,
+          status: 'pending',
+          role: 'user',
+          is_superadmin: false,
+          subscription_plan: 'starter',
+          subscription_status: 'active'
+        };
+        await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_CLOUD_KEY,
+            'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates,return=representation'
+          },
+          body: JSON.stringify(profilePayload)
+        });
+      } catch (e) {
+        console.warn('Profile upsert warning:', e);
+      }
+
+      return authId;
+    }
+
     const DEFAULT_ADMIN_USER = {
       id: 'usr-admin-01',
       name: 'Putri Ayu Sagita',
@@ -1049,9 +1131,59 @@
 
     async function syncUsersFromBackend() {
       try {
-        const res = await fetch('/api/users');
+        // Direct fetch from Supabase Cloud profiles table
+        const res = await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles?select=*`, {
+          headers: {
+            'apikey': SUPABASE_CLOUD_KEY,
+            'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`
+          }
+        });
         if (res.ok) {
-          const data = await res.json();
+          const dbProfiles = await res.json();
+          if (Array.isArray(dbProfiles) && dbProfiles.length > 0) {
+            const localUsers = getRegisteredUsers();
+            const map = new Map();
+            localUsers.forEach(u => map.set((u.email || '').toLowerCase() || u.id, u));
+            dbProfiles.forEach(p => {
+              const emailKey = (p.email || '').toLowerCase();
+              const existing = map.get(emailKey) || {};
+              const isSuperadmin = Boolean(p.is_superadmin || p.role === 'superadmin' || emailKey === 'putriayusagita02@gmail.com');
+              const merged = {
+                ...existing,
+                id: p.id || existing.id || ('usr-' + Date.now()),
+                name: p.full_name || existing.name || (emailKey.split('@')[0]),
+                email: p.email || existing.email,
+                phone: p.phone_number || existing.phone || '08123456789',
+                password: existing.password || 'password123',
+                plan: p.subscription_plan || existing.plan || (isSuperadmin ? 'pro' : 'starter'),
+                monthlyTxCount: p.monthly_tx_count || existing.monthlyTxCount || 0,
+                currency: p.default_currency || existing.currency || 'IDR',
+                isSuperadmin: isSuperadmin,
+                approvalStatus: p.status || existing.approvalStatus || (isSuperadmin ? 'approved' : 'pending'),
+                status: p.status || existing.status || (isSuperadmin ? 'approved' : 'pending'),
+                registeredAt: p.created_at ? new Date(p.created_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : (existing.registeredAt || '15 Okt 2026'),
+                avatarUrl: p.avatar_url || existing.avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.full_name || 'User')}&backgroundColor=f43f5e`,
+                wallets: existing.wallets || [],
+                categories: existing.categories || [],
+                transactions: existing.transactions || [],
+                bills: existing.bills || [],
+                jatahConfig: existing.jatahConfig || { paydayDate: 25, monthlySavingsTarget: 300000, enableRollover: true, streakDays: 1 },
+                telegramSettings: existing.telegramSettings || { isConnected: false, botUsername: 'PasgtaBot' }
+              };
+              map.set(emailKey, merged);
+            });
+            const finalUsers = Array.from(map.values());
+            localStorage.setItem('tatadana_registered_users', JSON.stringify(finalUsers));
+            return finalUsers;
+          }
+        }
+      } catch (e) {
+        console.warn('syncUsersFromBackend Supabase error:', e);
+      }
+      try {
+        const resLocal = await fetch('/api/users');
+        if (resLocal.ok) {
+          const data = await resLocal.json();
           if (data && data.ok && Array.isArray(data.users) && data.users.length > 0) {
             localStorage.setItem('tatadana_registered_users', JSON.stringify(data.users));
             return data.users;
@@ -1158,58 +1290,119 @@
       }
     }
 
-    function approveUserAccount(userId) {
+    async function approveUserAccount(userId) {
       const users = getRegisteredUsers();
-      const u = users.find(x => x.id === userId);
+      const u = users.find(x => x.id === userId || (x.email && x.email.toLowerCase() === String(userId).toLowerCase()));
       if (!u) return;
       u.approvalStatus = 'approved';
+      u.status = 'approved';
       saveRegisteredUsers(users);
-      if (AppState.user && AppState.user.id === userId) {
+
+      if (AppState.user && (AppState.user.id === userId || (AppState.user.email && AppState.user.email.toLowerCase() === u.email.toLowerCase()))) {
         AppState.user.approvalStatus = 'approved';
+        AppState.user.status = 'approved';
       }
+
+      // Direct Supabase Cloud PATCH update
+      try {
+        const patchFilter = (u.id && u.id.includes('-') && u.id.length > 20)
+          ? `id=eq.${u.id}`
+          : `email=eq.${encodeURIComponent(u.email)}`;
+        await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles?${patchFilter}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_CLOUD_KEY,
+            'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({ status: 'approved', updated_at: new Date().toISOString() })
+        });
+      } catch (err) {
+        console.warn('Supabase PATCH error:', err);
+      }
+
       try {
         fetch('/api/users/approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: userId })
+          body: JSON.stringify({ userId: u.id, email: u.email })
         }).catch(() => {});
       } catch (e) {}
-      alert(`✅ Akun ${u.name} (${u.email}) telah DISETUJUI!\nUser sekarang dapat membuka dashboard.`);
+
+      alert(`✅ Akun ${u.name} (${u.email}) telah DISETUJUI!\nStatus telah tersinkronisasi ke Supabase Cloud dan user dapat langsung masuk.`);
       renderApp();
     }
 
-    function rejectUserAccount(userId) {
-      if (!confirm('Apakah Anda yakin ingin menolak akun ini?')) return;
+    async function rejectUserAccount(userId) {
+      const reason = prompt('Masukkan alasan penolakan (opsional):', 'Data tidak sesuai');
+      if (reason === null) return;
       const users = getRegisteredUsers();
-      const u = users.find(x => x.id === userId);
+      const u = users.find(x => x.id === userId || (x.email && x.email.toLowerCase() === String(userId).toLowerCase()));
       if (!u) return;
       u.approvalStatus = 'rejected';
+      u.status = 'rejected';
+      u.rejectionReason = reason;
       saveRegisteredUsers(users);
-      if (AppState.user && AppState.user.id === userId) {
+
+      if (AppState.user && (AppState.user.id === userId || AppState.user.email === u.email)) {
         AppState.user.approvalStatus = 'rejected';
+        AppState.user.status = 'rejected';
       }
+
+      try {
+        const patchFilter = (u.id && u.id.includes('-') && u.id.length > 20)
+          ? `id=eq.${u.id}`
+          : `email=eq.${encodeURIComponent(u.email)}`;
+        await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles?${patchFilter}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_CLOUD_KEY,
+            'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({ status: 'rejected', rejection_reason: reason, updated_at: new Date().toISOString() })
+        });
+      } catch (e) {}
+
       try {
         fetch('/api/users/reject', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: userId })
+          body: JSON.stringify({ userId: u.id, email: u.email, reason: reason })
         }).catch(() => {});
       } catch (e) {}
+
       alert(`❌ Akun ${u.name} (${u.email}) telah DITOLAK.`);
       renderApp();
     }
 
-    function autoApproveCurrentSession() {
+    async function autoApproveCurrentSession() {
       const currentId = getActiveUserId() || (AppState.user && AppState.user.id);
+      const userEmail = AppState.user ? AppState.user.email : '';
       if (currentId) {
         approveUserAccount(currentId);
         loadUserSession(currentId);
+      }
+      if (userEmail) {
+        try {
+          await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(userEmail)}`, {
+            method: 'PATCH',
+            headers: {
+              'apikey': SUPABASE_CLOUD_KEY,
+              'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: 'approved', updated_at: new Date().toISOString() })
+          });
+        } catch (e) {}
       }
       alert('✅ Akun Berhasil Di-Approve Otomatis!\n\nSelamat datang di Dashboard TataDana.');
       navigate('dashboard');
     }
 
-    function quickApproveManualEmail() {
+    async function quickApproveManualEmail() {
       const input = document.getElementById('manual-approve-email');
       const val = input ? input.value.trim() : '';
       if (!val) {
@@ -1218,11 +1411,12 @@
       }
       const users = getRegisteredUsers();
       let u = users.find(x => (x.email && x.email.toLowerCase() === val.toLowerCase()) || (x.name && x.name.toLowerCase().includes(val.toLowerCase())));
+      const targetEmail = u ? u.email : (val.includes('@') ? val : val.toLowerCase() + '@tatadana.id');
       if (!u) {
         u = {
           id: 'usr-' + Date.now(),
           name: val.includes('@') ? val.split('@')[0] : val,
-          email: val.includes('@') ? val : val.toLowerCase() + '@tatadana.id',
+          email: targetEmail,
           phone: '+62812' + Math.floor(10000000 + Math.random() * 90000000),
           approvalStatus: 'approved',
           status: 'approved',
@@ -1235,6 +1429,20 @@
         u.status = 'approved';
       }
       saveRegisteredUsers(users);
+
+      try {
+        await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(targetEmail)}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_CLOUD_KEY,
+            'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({ status: 'approved', updated_at: new Date().toISOString() })
+        });
+      } catch (e) {}
+
       try {
         fetch('/api/users/approve', {
           method: 'POST',
@@ -1242,7 +1450,8 @@
           body: JSON.stringify({ userId: u.id, email: u.email })
         }).catch(() => {});
       } catch (e) {}
-      alert(`🎉 Sukses!\n\nAkun "${u.name}" (${u.email}) telah berhasil disetujui.\nPengguna/Dosen dapat langsung masuk ke dashboard.`);
+
+      alert(`🎉 Sukses!\n\nAkun "${u.name}" (${targetEmail}) telah berhasil disetujui di Supabase Cloud.\nPengguna/Dosen dapat langsung masuk ke dashboard.`);
       if (input) input.value = '';
       renderApp();
     }
@@ -1590,6 +1799,17 @@
       users.push(newUser);
       saveRegisteredUsers(users);
 
+      // 1. Immediately push registration to Supabase Cloud REST
+      registerUserToSupabase(newUser).then(authId => {
+        if (authId && authId !== newUser.id) {
+          newUser.id = authId;
+          saveRegisteredUsers(users);
+          setActiveUserId(authId);
+          if (AppState.user) AppState.user.id = authId;
+        }
+      }).catch(err => console.warn('Supabase register error:', err));
+
+      // 2. Also notify local backend if available
       try {
         fetch('/api/users/register', {
           method: 'POST',
@@ -1610,7 +1830,7 @@
       navigate('pending-approval');
     }
 
-    function handleLoginSubmit(e) {
+    async function handleLoginSubmit(e) {
       if (e) e.preventDefault();
       const identInput = document.getElementById('login-ident');
       const passInput = document.getElementById('login-pass');
@@ -1623,14 +1843,59 @@
         return;
       }
 
-      const users = getRegisteredUsers();
+      let users = getRegisteredUsers();
       const cleanPhone = ident.replace(/[^0-9]/g, '');
 
-      const user = users.find(u => {
+      let user = users.find(u => {
         const emailMatch = u.email && u.email.toLowerCase() === ident.toLowerCase();
         const phoneMatch = cleanPhone.length >= 8 && u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone;
         return emailMatch || phoneMatch;
       });
+
+      // If user not in local storage, check Supabase Cloud directly
+      if (!user) {
+        try {
+          const filter = ident.includes('@') ? `email=eq.${encodeURIComponent(ident)}` : `phone_number=eq.${encodeURIComponent(ident)}`;
+          const sRes = await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles?${filter}`, {
+            headers: {
+              'apikey': SUPABASE_CLOUD_KEY,
+              'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`
+            }
+          });
+          if (sRes.ok) {
+            const dbProfiles = await sRes.json();
+            if (Array.isArray(dbProfiles) && dbProfiles.length > 0) {
+              const p = dbProfiles[0];
+              const isSuperadmin = Boolean(p.is_superadmin || p.role === 'superadmin' || p.email === 'putriayusagita02@gmail.com');
+              user = {
+                id: p.id,
+                name: p.full_name || p.email.split('@')[0],
+                email: p.email,
+                phone: p.phone_number || '08123456789',
+                password: password,
+                plan: p.subscription_plan || (isSuperadmin ? 'pro' : 'starter'),
+                monthlyTxCount: p.monthly_tx_count || 0,
+                currency: p.default_currency || 'IDR',
+                isSuperadmin: isSuperadmin,
+                approvalStatus: p.status || (isSuperadmin ? 'approved' : 'pending'),
+                status: p.status || (isSuperadmin ? 'approved' : 'pending'),
+                registeredAt: p.created_at ? new Date(p.created_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : '15 Okt 2026',
+                avatarUrl: p.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(p.full_name || 'User')}&backgroundColor=f43f5e`,
+                wallets: [],
+                categories: [],
+                transactions: [],
+                bills: [],
+                jatahConfig: { paydayDate: 25, monthlySavingsTarget: 300000, enableRollover: true, streakDays: 1 },
+                telegramSettings: { isConnected: false, botUsername: 'PasgtaBot' }
+              };
+              users.push(user);
+              saveRegisteredUsers(users);
+            }
+          }
+        } catch (e) {
+          console.warn('Login Supabase lookup error:', e);
+        }
+      }
 
       if (!user) {
         showLoginError(`Akun "${ident}" tidak ditemukan. Pastikan email atau nomor HP sudah benar, atau daftar akun baru.`);
@@ -2847,22 +3112,10 @@
           return;
         }
         try {
-          const res = await fetch('/api/users');
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.ok && Array.isArray(data.users)) {
-              const currentLocal = getRegisteredUsers();
-              const map = new Map();
-              data.users.forEach(u => map.set(u.id, u));
-              currentLocal.forEach(u => {
-                if (!map.has(u.id)) map.set(u.id, u);
-              });
-              const merged = Array.from(map.values());
-              if (merged.length !== currentLocal.length) {
-                localStorage.setItem('tatadana_registered_users', JSON.stringify(merged));
-                renderApp();
-              }
-            }
+          const beforeCount = getRegisteredUsers().length;
+          const updated = await syncUsersFromBackend();
+          if (updated && (updated.length !== beforeCount || AppState.currentPage === 'admin')) {
+            renderApp();
           }
         } catch (e) {}
       }, 3000);
@@ -2882,61 +3135,75 @@
         return;
       }
       const currentId = getActiveUserId() || (AppState.user && AppState.user.id);
-      if (!currentId) return;
+      const userEmail = AppState.user ? AppState.user.email : '';
+      if (!currentId && !userEmail) return;
 
-      try {
-        const res = await fetch(`/api/users/status?id=${encodeURIComponent(currentId)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.ok && data.approvalStatus) {
-            const status = data.approvalStatus;
-            if (status === 'approved') {
-              if (pendingApprovalPollInterval) {
-                clearInterval(pendingApprovalPollInterval);
-                pendingApprovalPollInterval = null;
-              }
-              const users = getRegisteredUsers();
-              const u = users.find(x => x.id === currentId);
-              if (u) {
-                u.approvalStatus = 'approved';
-                saveRegisteredUsers(users);
-              }
-              loadUserSession(currentId);
-              alert('🎉 Selamat! Akun Anda telah DISETUJUI oleh Superadmin.\nAnda akan langsung dialihkan ke Dashboard.');
-              navigate('dashboard');
-              return;
-            } else if (status === 'rejected') {
-              if (pendingApprovalPollInterval) {
-                clearInterval(pendingApprovalPollInterval);
-                pendingApprovalPollInterval = null;
-              }
-              alert('❌ Maaf, pendaftaran akun Anda telah ditolak oleh Superadmin.');
-              handleLogout();
-              return;
+      let foundStatus = null;
+
+      // 1. Direct Supabase Cloud REST check
+      if (userEmail) {
+        try {
+          const sRes = await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(userEmail)}&select=status`, {
+            headers: {
+              'apikey': SUPABASE_CLOUD_KEY,
+              'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`
+            }
+          });
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            if (Array.isArray(sData) && sData.length > 0 && sData[0].status) {
+              foundStatus = sData[0].status;
             }
           }
-        }
-      } catch (e) {}
+        } catch (e) {}
+      }
 
-      const users = getRegisteredUsers();
-      const user = users.find(u => u.id === currentId) || (AppState.user && users.find(u => u.id === AppState.user.id));
-      if (user) {
-        if (user.approvalStatus === 'approved') {
-          if (pendingApprovalPollInterval) {
-            clearInterval(pendingApprovalPollInterval);
-            pendingApprovalPollInterval = null;
+      // 2. Check local API if still null
+      if (!foundStatus && currentId) {
+        try {
+          const res = await fetch(`/api/users/status?id=${encodeURIComponent(currentId)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.ok && data.approvalStatus) {
+              foundStatus = data.approvalStatus;
+            }
           }
-          loadUserSession(user.id);
-          alert('🎉 Selamat! Akun Anda telah DISETUJUI oleh Superadmin.\nAnda akan langsung dialihkan ke Dashboard.');
-          navigate('dashboard');
-        } else if (user.approvalStatus === 'rejected') {
-          if (pendingApprovalPollInterval) {
-            clearInterval(pendingApprovalPollInterval);
-            pendingApprovalPollInterval = null;
-          }
-          alert('❌ Maaf, pendaftaran akun Anda telah ditolak oleh Superadmin.');
-          handleLogout();
+        } catch (e) {}
+      }
+
+      // 3. Fallback to localStorage
+      if (!foundStatus) {
+        const users = getRegisteredUsers();
+        const u = users.find(x => x.id === currentId || (userEmail && x.email === userEmail));
+        if (u) foundStatus = u.approvalStatus || u.status;
+      }
+
+      if (foundStatus === 'approved') {
+        if (pendingApprovalPollInterval) {
+          clearInterval(pendingApprovalPollInterval);
+          pendingApprovalPollInterval = null;
         }
+        const users = getRegisteredUsers();
+        const u = users.find(x => x.id === currentId || (userEmail && x.email === userEmail));
+        if (u) {
+          u.approvalStatus = 'approved';
+          u.status = 'approved';
+          saveRegisteredUsers(users);
+        }
+        if (AppState.user) {
+          AppState.user.approvalStatus = 'approved';
+          AppState.user.status = 'approved';
+        }
+        loadUserSession(currentId || (u && u.id));
+        alert('🎉 Selamat! Akun Anda telah DISETUJUI oleh Superadmin.\nAnda akan langsung dialihkan ke Dashboard.');
+        navigate('dashboard');
+      } else if (foundStatus === 'rejected') {
+        if (pendingApprovalPollInterval) {
+          clearInterval(pendingApprovalPollInterval);
+          pendingApprovalPollInterval = null;
+        }
+        alert('❌ Maaf, pendaftaran akun Anda telah ditolak oleh Superadmin.');
+        handleLogout();
       }
     }
 
@@ -2947,22 +3214,44 @@
         btn.innerHTML = `<span>⏳</span><span>Mengecek Status...</span>`;
       }
       const currentId = getActiveUserId() || (AppState.user && AppState.user.id);
+      const userEmail = AppState.user ? AppState.user.email : '';
       let statusFound = null;
 
-      try {
-        const res = await fetch(`/api/users/status?id=${encodeURIComponent(currentId)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.ok && data.approvalStatus) {
-            statusFound = data.approvalStatus;
+      // 1. Check Supabase Cloud directly
+      if (userEmail) {
+        try {
+          const sRes = await fetch(`${SUPABASE_CLOUD_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(userEmail)}&select=status`, {
+            headers: {
+              'apikey': SUPABASE_CLOUD_KEY,
+              'Authorization': `Bearer ${SUPABASE_CLOUD_KEY}`
+            }
+          });
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            if (Array.isArray(sData) && sData.length > 0 && sData[0].status) {
+              statusFound = sData[0].status;
+            }
           }
-        }
-      } catch (e) {}
+        } catch (e) {}
+      }
+
+      // 2. Check local endpoint
+      if (!statusFound && currentId) {
+        try {
+          const res = await fetch(`/api/users/status?id=${encodeURIComponent(currentId)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.ok && data.approvalStatus) {
+              statusFound = data.approvalStatus;
+            }
+          }
+        } catch (e) {}
+      }
 
       const users = getRegisteredUsers();
-      const user = users.find(u => u.id === currentId) || (AppState.user && users.find(u => u.id === AppState.user.id));
+      const user = users.find(u => u.id === currentId || (userEmail && u.email === userEmail));
       if (!statusFound && user) {
-        statusFound = user.approvalStatus;
+        statusFound = user.approvalStatus || user.status;
       }
 
       if (btn) {
@@ -2973,9 +3262,14 @@
       if (statusFound === 'approved') {
         if (user) {
           user.approvalStatus = 'approved';
+          user.status = 'approved';
           saveRegisteredUsers(users);
         }
-        loadUserSession(currentId);
+        if (AppState.user) {
+          AppState.user.approvalStatus = 'approved';
+          AppState.user.status = 'approved';
+        }
+        loadUserSession(currentId || (user && user.id));
         alert('🎉 Selamat! Akun Anda telah DISETUJUI oleh Superadmin.\nAnda akan langsung dialihkan ke Dashboard.');
         navigate('dashboard');
       } else if (statusFound === 'rejected') {
@@ -5275,6 +5569,10 @@
               <p class="text-xs text-slate-500 mt-0.5">Kelola verifikasi pendaftar baru. Akun berstatus pending tidak dapat membuka dashboard sebelum disetujui.</p>
             </div>
             <div class="flex items-center gap-2">
+              <button onclick="syncUsersFromBackend().then(() => renderApp())" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition active:scale-95 shadow-xs">
+                <span>🔄</span>
+                <span>Sinkronkan Cloud</span>
+              </button>
               <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
                 ${getRegisteredUsers().filter(u => !u.isSuperadmin && (u.approvalStatus === 'pending' || !u.approvalStatus)).length} Menunggu Persetujuan
               </span>

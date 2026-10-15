@@ -1,0 +1,41 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin/index.html"
+    },
+    {
+      "source": "/login",
+      "destination": "/login/index.html"
+    },
+    {
+      "source": "/register",
+      "destination": "/register/index.html"
+    },
+    {
+      "source": "/masuk",
+      "destination": "/login/index.html"
+    },
+    {
+      "source": "/daftar",
+      "destination": "/register/index.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/dashboard/index.html"
+    },
+    {
+      "source": "/pending-approval",
+      "destination": "/pending-approval/index.html"
+    },
+    {
+      "source": "/((?!api/|_next/|assets/|.*\\..*).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

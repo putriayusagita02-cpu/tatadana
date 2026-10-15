@@ -71,7 +71,23 @@ export default function AdminPage() {
   ]);
 
   // Approval Filter
-  const [approvalFilter, setApprovalFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  // Realtime Sync from /api/users (Supabase / Cloud API)
+  useEffect(() => {
+    const fetchUsers = () => {
+      fetch('/api/users')
+        .then(res => res.json())
+        .then(data => {
+          if (data && Array.isArray(data.users) && data.users.length > 0) {
+            setUsers(data.users);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchUsers();
+    const interval = setInterval(fetchUsers, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Reject Modal State
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null);
@@ -257,6 +273,13 @@ export default function AdminPage() {
       }
     }
 
+    // Call Cloud Backend API to persist approval in Supabase
+    fetch('/api/users/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    }).catch(() => {});
+
     // Kirim notifikasi Telegram riil via backend API (Part 14.2)
     try {
       await fetch('/api/admin/notify-user', {
@@ -319,6 +342,13 @@ export default function AdminPage() {
         tatadanaStore.updateUser({ ...active, status: 'rejected', rejection_reason: rejectReason.trim() });
       }
     }
+
+    // Call Cloud Backend API to persist rejection in Supabase
+    fetch('/api/users/reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: rejectingUserId, reason: rejectReason.trim() }),
+    }).catch(() => {});
 
     // Kirim notifikasi penolakan via Telegram riil dengan alasan (Part 14.2)
     try {

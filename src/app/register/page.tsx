@@ -61,6 +61,13 @@ export default function RegisterPage() {
       };
       tatadanaStore.updateUser(pendingUser as any);
 
+      // Persist to Cloud API / Supabase database
+      fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: fullName, email, phone }),
+      }).catch(() => {});
+
       // Mulai verifikasi Telegram OTP (Part 14.4)
       const verification = await startVerification(pendingUser.id, email, phone);
 

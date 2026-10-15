@@ -1076,13 +1076,19 @@ class TataDanaHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'ok': False, 'message': str(e)}).encode('utf-8'))
             return
 
-        # 8. Endpoint: /api/users/register
-        if self.path == '/api/users/register':
+        # 8. Endpoint: /api/users or /api/users/register
+        if self.path in ['/api/users', '/api/users/register']:
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
             try:
                 raw_body = json.loads(post_data.decode('utf-8'))
                 new_user = raw_body.get('user', raw_body) if isinstance(raw_body, dict) else {}
+                if not new_user.get('id'):
+                    new_user['id'] = f"usr-{int(time.time()*1000)}"
+                if not new_user.get('registeredAt'):
+                    new_user['registeredAt'] = format_wib_timestamp()
+                if not new_user.get('approvalStatus'):
+                    new_user['approvalStatus'] = 'pending'
                 users = load_registered_users()
                 idx = -1
                 for i, u in enumerate(users):
